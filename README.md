@@ -1,112 +1,146 @@
 # Met Harvester Diagnostics
 
-Harvests every object in every curatorial department from The Met Collection Public API,
-then surveys the metadata (every JSON path actually served, its types, fill rates, values,
-and how these vary by department) and maps each path to the documented schema and to the
-`stg:` staging predicates used by `paa_graph_kb`.
+Harvests every object in every curatorial department from The Met Collection Public API
+(`https://collectionapi.metmuseum.org/public/collection/v1`), surveys the metadata (every
+JSON path actually served, its types, fill rates and values, and how these vary by
+department) and maps each path to the documented schema and to the `stg:` staging predicates
+used by `paa_graph_kb`. A local web page shows the harvest running and four views of
+metadata fill by department that update as records arrive.
 
 It generalises [met-harvester-diagnostics-department13](https://github.com/giuliataurino/met-harvester-diagnostics-department13)
-from Greek and Roman Art (department 13) to the whole collection, and keeps its
-`<objectID>.json` cache layout so the diagnostics UI can be pointed at the same cache
-(`python server.py --cache data/met/objects`).
+from Greek and Roman Art (department 13) to the whole collection and keeps the same
+`<objectID>.json` cache layout, so that tool's UI can be pointed at this cache.
 
-## Clone Repo
-```
+## Requirements
+
+- Python 3.9 or newer (`python3 --version`)
+- git
+
+## Install
+
+```bash
 cd ~
 git clone https://github.com/giuliataurino/met-harvester-diagnostics.git
-```
-## Setup
-
-```
-python3 -m venv .venv && source .venv/bin/activate
+cd ~/met-harvester-diagnostics
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt            # requests, pydantic, rdflib
-pip install -r requirements-dev.txt && pytest   # optional
+pip install -r requirements-dev.txt        # pytest (optional)
+python -m pytest tests                     # 8 tests, no network needed
 ```
 
-## Usage
+Every command below is run from `~/met-harvester-diagnostics` with the venv active. If the
+prompt shows `~` instead of `met-harvester-diagnostics`, run
+`cd ~/met-harvester-diagnostics && source .venv/bin/activate` first.
 
-```
-cd ~
-rm -f ~/metdiag
-if [ ! -f ~/met-harvester-diagnostics/diagnostics/server.py ]; then
-  rm -rf ~/met-harvester-diagnostics
-  git clone https://github.com/giuliataurino/met_harvester_diagnostics.git ~/met-harvester-diagnostics \
-    || { echo "CLONE FAILED - read the git error above"; return 2>/dev/null || exit 1; }
-fi
-cd ~/met-harvester-diagnostics/diagnostics || { echo "diagnostics folder missing"; return 2>/dev/null || exit 1; }
-ls requirements.txt requirements-dev.txt server.py test_server.py \
-    || { echo "files missing in $(pwd)"; return 2>/dev/null || exit 1; }
-source ~/.venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
-[ -e metdiag ] || ln -s ../met_harvester metdiag
-python -m pytest test_server.py
-echo "Starting server: open http://localhost:8765"
-python server.py --cache data/met/objects
+## Run on localhost
+
+```bash
+python -m met_harvest check        # three live calls to the Met API; prints each URL and status
+python -m met_harvest serve        # starts the page
 ```
 
-Add `--verbose` before the subcommand to log every request URL and status. Every request goes
-to `https://collectionapi.metmuseum.org/public/collection/v1`; nothing else is read.
+Open **http://localhost:8766** in your browser and leave the terminal running. On the page:
 
-Default cache root is `data/met`, report dir `data/met/report`; both take `--cache` / `--out`.
+1. **Harvest** — tick departments (none ticked means all), optionally set a limit per
+   department and the number of workers, click **Start harvest**. A progress row per
+   department shows listed / fetched / from cache / missing / failed / invalid. **Stop**
+   finishes the in-flight requests; **Start** again resumes, since cached objects cost no
+   request. **Re-index cache** rebuilds the statistics from disk.
+2. **Fill rate, field × department** — heatmap of the 58 documented fields (grouped) against
+   departments, most complete first. Hover a cell for the number.
+3. **How a field is unpopulated, per department** — one bar per field per department, split
+   into filled / empty string / null / empty list / key absent.
+4. **Department completeness** — mean fill, fields never filled, fields always filled.
+5. **Filled vs resolved to AAT** — for `culture`, `objectName`, `classification` and `medium`,
+   the share of records with a value against the share that resolves to an AAT URI through
+   the tables in `met_harvest/aat.py`.
+
+The charts refresh every two seconds while a harvest runs. Use another port with
+`python -m met_harvest serve --port 8080`. Ctrl-C stops the server.
+
+Records are written to `data/met/objects/<objectID>.json`; `data/met/` is ignored by git.
+
+## Command line
+
+```bash
+python -m met_harvest departments                            # list department ids and names
+python -m met_harvest harvest --dept 13 --limit 500          # trial run, one department
+python -m met_harvest harvest --workers 4 --rate 20          # everything (~480k objects, ~7 h at 20 req/s)
+python -m met_harvest harvest --since 2026-01-01             # only objects updated since a date
+python -m met_harvest survey --staging-sample 2000           # read the cache, write data/met/report/survey.json
+python -m met_harvest map                                    # field_map.csv / field_map.json / REPORT.md
+python -m met_harvest all --dept 13                          # harvest + survey + map in one go
+```
+
+Add `--verbose` before the subcommand to log every request URL and status. `--cache` and
+`--out` change the cache root (`data/met`) and report directory (`data/met/report`).
 
 ### Harvest behaviour
 
-- `/departments` is read on every run; `/objects?departmentIds=N` is read per department
-  and saved to `ids/<N>.json`, so the id universe of a run is on disk. `/v1.1/search` is not
-  used for enumeration: it is capped at 10,000 results.
-- Each object is fetched once and stored at `objects/<objectID>.json`, byte-for-byte as served.
-  A 404 leaves `objects/<objectID>.missing` so it is not retried. `--refresh` refetches,
-  `--since YYYY-MM-DD` passes `metadataDate` to pick up only updated objects.
-- Workers share one rate limiter (default 20 req/s; the Met asks for at most 80). At 20 req/s
-  the full collection takes about seven hours; it is safe to Ctrl-C and rerun, since cached
-  ids cost no request. Progress is checkpointed to `harvest_state.json`; failures and
-  records the `MetObject` model rejects go to `harvest_failures.jsonl` with the reason.
-- A department is skipped on rerun once marked done, unless `--redo`, `--refresh` or `--since`.
+- `/departments` is read on every run; `/objects?departmentIds=N` is read per department and
+  saved to `data/met/ids/<N>.json`. `/v1.1/search` is not used for enumeration because it is
+  capped at 10,000 results.
+- Each object is fetched once and stored as served. A 404 leaves
+  `objects/<objectID>.missing` so it is not retried. `--refresh` refetches.
+- Workers share one rate limiter (default 20 req/s; the Met asks for at most 80).
+  Progress is checkpointed to `data/met/harvest_state.json`; failures and records the
+  `MetObject` model rejects go to `data/met/harvest_failures.jsonl` with the reason.
+- A department is skipped on rerun once marked done unless `--redo`, `--refresh` or `--since`.
 
-### Survey
+### Survey and field map
 
 `survey.json` holds, for every JSON path seen (`culture`, `tags[].term`,
 `measurements[].elementMeasurements.*`, …): occurrences, non-empty fills, nulls, empty strings
-and lists, observed types, distinct-value count, top values, numeric and string-length ranges,
-and three example values with their object ids. Value counting stops per path after
-`--max-distinct` values (default 5,000) so memory stays flat over the full collection; the
-path is then flagged high-cardinality. It also records, per department, the fill rate of every
-top-level field; objects whose own `department` disagrees with the listing they came from;
-accession numbers shared by several objects; and a century histogram of `objectBeginDate`.
-
-### Field map
+and lists, observed types, distinct-value count, top values, numeric and string-length ranges
+and example values with object ids; plus per-department fill, listing-vs-record department
+disagreements, shared accession numbers and an `objectBeginDate` century histogram.
 
 `field_map.csv` / `.json` has one row per path: status (`documented`, `undocumented`,
-`never_seen`), documented type vs observed types, fill rate, distinct count, top values,
-the staging predicates it feeds and the AAT table it is looked up in. `REPORT.md` renders the
-same with the per-department fill matrix, AAT resolution rates and the most frequent terms
-that do not resolve, and (with `--staging-sample`) triples per predicate plus fields that were
-filled in the raw record but produced none of their expected triples.
+`never_seen`), documented vs observed types, fill rate, distinct count, top values, the
+staging predicates it feeds and the AAT table it is looked up in. `REPORT.md` renders the
+same with the per-department matrix, AAT resolution rates and (with `--staging-sample`)
+triples per predicate and fields filled but producing no triple.
 
-The reference side lives in `met_harvest/fields.py` (58 fields, from
-https://metmuseum.github.io/#object) and should be updated when the Met documents new fields;
-anything the API serves that is not there shows up as `undocumented` in the report, which is
-how schema drift surfaces.
+The documented schema is `met_harvest/fields.py` (58 fields, from
+https://metmuseum.github.io/#object). Anything the API serves that is not there shows up as
+`undocumented`, which is how schema drift surfaces.
 
-## Files copied from met_harvester_diagnostics
+## Using the department-13 UI on the same cache
 
-`models.py`, `staging.py` and `aat.py` are copies (the first two originally from
-`paa_graph_kb`). As with the diagnostics tool, they drift if the upstream mapping changes;
-each file says where it came from. The staging code is only used by the `--staging-sample`
-check; the harvest and survey do not depend on it.
+The older diagnostics UI can browse the records this tool harvests:
+
+```bash
+cd ~/met-harvester-diagnostics-department13/diagnostics
+python server.py --cache ~/met-harvester-diagnostics/data/met/objects
+```
+
+It runs on http://localhost:8765, so both pages can be open at once.
 
 ## Layout
 
 ```
 met_harvest/
-  client.py    API client, cache, rate limiter
-  harvest.py   all-department orchestration, resume, failure log
-  survey.py    path/type/value/department statistics
-  fields.py    documented schema + staging map (reference side)
-  mapping.py   joins survey with fields.py; writes CSV / JSON / REPORT.md
-  cli.py       command line
-  models.py, staging.py, aat.py   copied, see above
-tests/test_pipeline.py   runs the whole pipeline against a fake API
+  client.py     API client, cache, rate limiter
+  harvest.py    all-department orchestration, resume, failure log
+  survey.py     path / type / value / department statistics
+  fields.py     documented schema + staging map
+  mapping.py    joins survey with fields.py; writes CSV / JSON / REPORT.md
+  serve.py, index.html   local page: harvest control + live views
+  cli.py        command line
+  models.py, staging.py, aat.py   copied from the department-13 tool (originally paa_graph_kb)
+tests/          run the whole pipeline and the page's API against a fake Met API
+data/met/       cache and reports (ignored by git)
 ```
 
-License: GPL-3.0, as the diagnostics repo.
+## Troubleshooting
+
+- `No module named met_harvest` — you are not in `~/met-harvester-diagnostics`, or the
+  package folder is not named `met_harvest`. Python cannot import a folder with a hyphen in
+  its name.
+- `No module named pytest` / `requests` — the venv is not active: `source .venv/bin/activate`.
+- `cannot reach https://collectionapi.metmuseum.org/...` from `check` — no network, or a
+  proxy blocking the host. The page still opens and shows whatever is already in the cache.
+- `Address already in use` — another server has port 8766; add `--port 8080`.
+
+License: GPL-3.0.

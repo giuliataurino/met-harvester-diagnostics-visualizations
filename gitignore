@@ -1,0 +1,10 @@
+__pycache__/
+.venv/
+.pytest_cache/
+data/met/*
+!data/met/ids/
+!data/met/objects/
+data/met/ids/*
+data/met/objects/*
+!data/met/ids/.gitkeep
+!data/met/objects/.gitkeep
