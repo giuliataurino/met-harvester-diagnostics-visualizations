@@ -10,6 +10,11 @@ from Greek and Roman Art (department 13) to the whole collection, and keeps its
 `<objectID>.json` cache layout so the diagnostics UI can be pointed at the same cache
 (`python server.py --cache data/met/objects`).
 
+## Clone Repo
+```
+cd ~
+git clone https://github.com/giuliataurino/met-harvester-diagnostics.git
+```
 ## Setup
 
 ```
