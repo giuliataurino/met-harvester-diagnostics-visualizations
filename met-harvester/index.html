@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Met metadata by department</title>
+<style>
+:root{
+  --paper:#f7f6f2; --ink:#1f1e1b; --mute:#6b6a65; --line:#dcd9d1; --panel:#ffffff;
+  --f0:#eceff1; --f1:#c5d6e0; --f2:#8fb0c4; --f3:#4f7f9c; --f4:#1f4f6e;
+  --empty:#e3e0d8; --null:#bdb8ac; --absent:#f1efe9;
+  --rust:#9c4a25; --ok:#2f6b4f; --focus:#1f4f6e;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --paper:#17191c; --ink:#e8e6e1; --mute:#9a9892; --line:#30343a; --panel:#1e2125;
+  --f0:#23272c; --f1:#2f4654; --f2:#3f6b84; --f3:#6a9db9; --f4:#a9cde0;
+  --empty:#3a3d42; --null:#52565c; --absent:#1b1d20; --rust:#d58a63; --ok:#7fc29b; color-scheme:dark;}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);
+  font:15px/1.5 -apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums}
+main{max-width:1240px;margin:0 auto;padding:28px 20px 80px}
+h1{font-size:28px;font-weight:600;letter-spacing:-.01em;margin:0 0 4px}
+h2{font-size:20px;font-weight:600;margin:0 0 4px}
+p{margin:0;max-width:70ch;color:var(--mute)}
+section{margin-top:56px;padding-top:24px;border-top:1px solid var(--line)}
+section:first-of-type{margin-top:24px;border-top:0;padding-top:0}
+.lead{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-bottom:16px}
+.status{font-size:14px;color:var(--mute)}
+.status b{color:var(--ink);font-weight:600}
+.live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--ok);margin-right:6px;vertical-align:middle}
+.live.off{background:var(--line)}
+form{display:grid;grid-template-columns:1fr auto;gap:16px 24px;align-items:start}
+fieldset{border:0;padding:0;margin:0}
+.depts{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:4px 16px}
+label{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+input[type=checkbox]{accent-color:var(--focus);width:15px;height:15px}
+.controls{display:flex;flex-direction:column;gap:10px;min-width:220px}
+.controls label{justify-content:space-between}
+input[type=number]{width:96px;padding:6px 8px;border:1px solid var(--line);border-radius:4px;background:var(--panel);color:var(--ink);font:inherit}
+button{font:inherit;font-size:14px;padding:8px 14px;border-radius:4px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+button.primary{background:var(--f4);border-color:var(--f4);color:#fff}
+button:disabled{opacity:.5;cursor:default}
+button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+table{border-collapse:collapse;width:100%;font-size:14px;margin-top:16px}
+th,td{text-align:right;padding:6px 10px;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--mute)}
+td.bar{width:220px}
+.track{height:6px;background:var(--f0);border-radius:3px;overflow:hidden}
+.track i{display:block;height:100%;background:var(--f3)}
+.err{color:var(--rust)}
+.empty{padding:28px 0;color:var(--mute)}
+svg{display:block;max-width:100%;height:auto}
+.scroll{overflow-x:auto}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--mute);margin:12px 0 0}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:14px;height:10px;display:inline-block;border-radius:2px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px 28px;margin-top:16px}
+.card h3{font-size:14px;font-weight:600;margin:0 0 2px}
+.card small{color:var(--mute);font-size:12px}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--paper);font-size:12px;padding:6px 8px;border-radius:4px;display:none;z-index:9;max-width:320px}
+text{fill:var(--ink)}
+.axis text{fill:var(--mute);font-size:11px}
+@media (prefers-reduced-motion:no-preference){.track i{transition:width .4s}}
+</style>
+</head>
+<body>
+<main>
+<h1>Met metadata by department</h1>
+<p id="intro">Which of the 58 object fields are populated, department by department, read from the harvest cache and updated as records arrive from the Met Collection API.</p>
+
+<section id="harvest">
+  <div class="lead">
+    <div><h2>Harvest</h2><p>Choose departments and start. Objects already in the cache cost no request; stop at any time and start again to resume.</p></div>
+    <div class="status" id="status"><span class="live off"></span>indexing cache…</div>
+  </div>
+  <form id="form" onsubmit="return false">
+    <fieldset><div class="depts" id="depts"></div>
+      <div class="btns" style="margin-top:10px"><button type="button" id="all">Select all</button><button type="button" id="none">Clear</button></div>
+    </fieldset>
+    <div class="controls">
+      <label>Limit per department <input type="number" id="limit" min="1" placeholder="all"></label>
+      <label>Workers <input type="number" id="workers" min="1" max="16" value="4"></label>
+      <div class="btns"><button class="primary" id="start">Start harvest</button><button id="stop" disabled>Stop</button><button id="reindex">Re-index cache</button></div>
+      <div class="err" id="error"></div>
+    </div>
+  </form>
+  <div id="progress"></div>
+</section>
+
+<section id="heat">
+  <h2>Fill rate, field × department</h2>
+  <p>Share of each department's records with a non-empty value. Rows are the documented fields in their groups; columns are departments, most complete first. Hover a cell for the number.</p>
+  <div class="scroll" id="heatmap"></div>
+  <div class="legend"><span><i style="background:var(--f0)"></i>0</span><span><i style="background:var(--f1)"></i>25%</span><span><i style="background:var(--f2)"></i>50%</span><span><i style="background:var(--f3)"></i>75%</span><span><i style="background:var(--f4)"></i>100%</span></div>
+</section>
+
+<section id="multiples">
+  <h2>How a field is unpopulated, per department</h2>
+  <p>One bar per field, in the same order as the heatmap. The heatmap collapses a field to one number; this shows whether the rest is an empty string, a null, an empty list, or a key the API did not send at all.</p>
+  <div class="legend"><span><i style="background:var(--f3)"></i>filled</span><span><i style="background:var(--empty)"></i>empty string</span><span><i style="background:var(--null)"></i>null</span><span><i style="background:var(--f1)"></i>empty list</span><span><i style="background:var(--absent);border:1px solid var(--line)"></i>absent</span></div>
+  <div class="grid" id="small"></div>
+</section>
+
+<section id="profile">
+  <h2>Department completeness</h2>
+  <p>Mean fill rate over the documented fields, and how many fields are never filled in that department.</p>
+  <div id="completeness"></div>
+</section>
+
+<section id="aat">
+  <h2>Filled vs resolved to AAT</h2>
+  <p>For the four fields the staging mapping looks up in the Getty AAT tables: the share of records with a value, and the share whose value resolves to an AAT URI. The gap between the two dots is what the knowledge graph loses.</p>
+  <div class="legend"><span><i style="background:var(--f3)"></i>has a value</span><span><i style="background:var(--rust)"></i>resolves to AAT</span></div>
+  <div class="grid" id="aatplot"></div>
+</section>
+</main>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const pct = x => (x*100).toFixed(x < .1 && x > 0 ? 1 : 0) + '%';
+const fmt = n => Number(n).toLocaleString();
+const FILLS = ['--f0','--f1','--f2','--f3','--f4'];
+const shade = v => `var(${FILLS[v <= 0 ? 0 : v >= .999 ? 4 : Math.min(3, Math.floor(v*4))]})`;
+const tip = $('#tip');
+function showTip(e, html){ tip.innerHTML = html; tip.style.display='block'; moveTip(e); }
+function moveTip(e){ tip.style.left = (e.clientX+12)+'px'; tip.style.top = (e.clientY+12)+'px'; }
+function hideTip(){ tip.style.display='none'; }
+document.addEventListener('mousemove', e => { if (tip.style.display==='block') moveTip(e); });
+
+let known = [], deptsRendered = false, lastState = null;
+
+function renderDepts(list){
+  if (deptsRendered || !list.length) return;
+  deptsRendered = true;
+  $('#depts').innerHTML = list.map(d => `<label><input type="checkbox" value="${d.id}"> ${d.id} · ${esc(d.name)}</label>`).join('');
+}
+$('#all').onclick = () => document.querySelectorAll('#depts input').forEach(i => i.checked = true);
+$('#none').onclick = () => document.querySelectorAll('#depts input').forEach(i => i.checked = false);
+$('#start').onclick = async () => {
+  const ids = [...document.querySelectorAll('#depts input:checked')].map(i => +i.value);
+  const limit = +$('#limit').value || null, workers = +$('#workers').value || 4;
+  const r = await fetch('/api/harvest/start', {method:'POST', body: JSON.stringify({departments: ids.length ? ids : null, limit, workers})});
+  const j = await r.json(); $('#error').textContent = j.ok ? '' : j.message; poll(true);
+};
+$('#stop').onclick = () => fetch('/api/harvest/stop', {method:'POST'});
+$('#reindex').onclick = () => fetch('/api/reindex', {method:'POST'}).then(() => poll(true));
+
+function renderStatus(s){
+  const sv = s.survey;
+  const live = s.running ? '<span class="live"></span>harvesting' : s.indexing ? '<span class="live"></span>indexing' : '<span class="live off"></span>idle';
+  $('#status').innerHTML = `${live} · <b>${fmt(sv.records)}</b> records in cache · <b>${fmt(s.requests_made)}</b> live requests this session · ${esc(s.api.replace('https://',''))}`;
+  $('#start').disabled = s.running; $('#stop').disabled = !s.running;
+  $('#error').textContent = s.error || '';
+  const rows = s.progress.departments || [];
+  if (!rows.length) { $('#progress').innerHTML = ''; return; }
+  $('#progress').innerHTML = `<table><thead><tr><th>department</th><th>listed</th><th>fetched</th><th>from cache</th><th>missing</th><th>failed</th><th>invalid</th><th></th><th>progress</th></tr></thead><tbody>` +
+    rows.map(r => { const done = r.fetched + r.cached + r.missing + r.failed + r.invalid, p = r.listed ? done/r.listed : 0;
+      return `<tr><td>${r.department_id} · ${esc(r.name)}</td><td>${fmt(r.listed)}</td><td>${fmt(r.fetched)}</td><td>${fmt(r.cached)}</td><td>${fmt(r.missing)}</td><td>${fmt(r.failed)}</td><td>${fmt(r.invalid)}</td><td>${r.done ? 'done' : pct(p)}</td><td class="bar"><div class="track"><i style="width:${p*100}%"></i></div></td></tr>`; }).join('') + '</tbody></table>';
+}
+
+function prepared(s){
+  const sv = s.survey, fields = s.fields;
+  const names = Object.keys(sv.departments);
+  const mean = d => { const f = sv.departments[d].fill; return fields.reduce((a,x) => a + (f[x.name]||0), 0) / fields.length; };
+  names.sort((a,b) => mean(b) - mean(a));
+  return {sv, fields, names, mean};
+}
+
+function renderHeatmap(P){
+  const {sv, fields, names} = P;
+  if (!names.length) { $('#heatmap').innerHTML = '<div class="empty">No records yet. Start a harvest above.</div>'; return; }
+  const maxLabel = Math.max(...names.map(d => d.length + String(sv.departments[d].records).length + 3));
+  const left = 150, top = 24 + Math.ceil(maxLabel * 5.4 * 0.82), cw = Math.max(26, Math.min(44, Math.floor(1000/names.length))), rh = 14, gap = 10;
+  const groups = [...new Set(fields.map(f => f.group))];
+  let y = top, rows = [], gl = [];
+  for (const g of groups){ gl.push({g, y}); for (const f of fields.filter(f => f.group===g)){ rows.push({f, y}); y += rh; } y += gap; }
+  const W = left + names.length*cw + Math.ceil(maxLabel * 5.4 * 0.6), H = y + 8;
+  let out = `<svg viewBox="0 0 ${W} ${H}" width="${W}" role="img" aria-label="Fill rate by field and department">`;
+  names.forEach((d, i) => { const x = left + i*cw + cw/2; out += `<text class="axis" transform="translate(${x},${top-6}) rotate(-55)" text-anchor="start" font-size="11">${esc(d)} (${fmt(sv.departments[d].records)})</text>`; });
+  for (const {g,y} of gl) out += `<text x="0" y="${y+10}" font-size="11" fill="var(--mute)">${esc(g)}</text>`;
+  for (const {f,y} of rows){
+    out += `<text x="${left-6}" y="${y+10.5}" text-anchor="end" font-size="11">${esc(f.name)}</text>`;
+    names.forEach((d,i) => { const v = sv.departments[d].fill[f.name] || 0;
+      out += `<rect x="${left+i*cw}" y="${y}" width="${cw-1}" height="${rh-1}" fill="${shade(v)}" data-t="${esc(d)}<br>${esc(f.name)}: ${pct(v)} of ${fmt(sv.departments[d].records)}"></rect>`; });
+  }
+  out += '</svg>';
+  $('#heatmap').innerHTML = out;
+}
+
+function renderSmall(P){
+  const {sv, fields, names} = P;
+  if (!names.length) { $('#small').innerHTML = ''; return; }
+  const rh = 5, gap = 7, W = 280, labelW = 70, bw = W - labelW;
+  // same row layout as the heatmap: fields grouped, a gap between groups, group name at the left
+  const groups = [...new Set(fields.map(f => f.group))]; let y = 0; const rows = [], gl = [];
+  for (const g of groups){ gl.push({g, y}); for (const f of fields.filter(f => f.group===g)){ rows.push({f, y}); y += rh; } y += gap; }
+  const H = y - gap;
+  $('#small').innerHTML = names.map(d => {
+    const D = sv.departments[d], n = D.records;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}">`;
+    for (const {g, y} of gl) svg += `<text x="0" y="${y+5}" font-size="7" fill="var(--mute)">${esc(g)}</text>`;
+    for (const {f, y} of rows){
+      const k = D.kinds[f.name] || {}, filled = k.filled||0, es = k.empty_string||0, nu = k.null||0, el = k.empty_list||0;
+      const absent = Math.max(0, n - filled - es - nu - el), parts = [[filled,'--f3'],[es,'--empty'],[nu,'--null'],[el,'--f1'],[absent,'--absent']];
+      let x = labelW; const t = `${esc(d)}<br>${esc(f.name)}: filled ${fmt(filled)}, empty string ${fmt(es)}, null ${fmt(nu)}, empty list ${fmt(el)}, absent ${fmt(absent)}`;
+      for (const [c,col] of parts){ const w = n ? c/n*bw : 0; if (w>0) svg += `<rect x="${x}" y="${y}" width="${w}" height="${rh-1}" fill="var(${col})" data-t="${t}"></rect>`; x += w; }
+    }
+    return `<div class="card"><h3>${esc(d)}</h3><small>${fmt(n)} records</small>${svg}</svg></div>`;
+  }).join('');
+}
+
+function renderCompleteness(P){
+  const {sv, fields, names, mean} = P;
+  if (!names.length) { $('#completeness').innerHTML = ''; return; }
+  $('#completeness').innerHTML = `<table><thead><tr><th>department</th><th>records</th><th>mean fill</th><th>never filled</th><th>fully filled</th><th></th></tr></thead><tbody>` +
+    names.map(d => { const f = sv.departments[d].fill, m = mean(d);
+      const never = fields.filter(x => !(f[x.name]>0)).length, full = fields.filter(x => f[x.name] >= .999).length;
+      return `<tr><td>${esc(d)}</td><td>${fmt(sv.departments[d].records)}</td><td>${pct(m)}</td><td>${never}</td><td>${full}</td><td class="bar"><div class="track"><i style="width:${m*100}%"></i></div></td></tr>`; }).join('') + '</tbody></table>';
+}
+
+function renderAAT(P){
+  const {sv, fields, names} = P;
+  const aatFields = fields.filter(f => f.aat).map(f => f.name);
+  if (!names.length) { $('#aatplot').innerHTML = ''; return; }
+  const W = 300, rh = 18, left = 0;
+  $('#aatplot').innerHTML = aatFields.map(fn => {
+    let svg = `<svg viewBox="0 0 ${W} ${names.length*rh+4}" width="${W}">`;
+    names.forEach((d, i) => {
+      const a = (sv.departments[d].aat||{})[fn] || {}, n = sv.departments[d].records;
+      const fv = n ? (a.filled||0)/n : 0, rv = n ? (a.resolved||0)/n : 0, y = i*rh + rh/2;
+      const x1 = left + rv*W*.98, x2 = left + fv*W*.98;
+      const t = `${esc(d)}<br>${fn}: value in ${pct(fv)}, resolves in ${pct(rv)}`;
+      svg += `<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)"></line>`;
+      svg += `<line x1="${x1}" x2="${x2}" y1="${y}" y2="${y}" stroke="var(--rust)" stroke-width="2" opacity=".6"></line>`;
+      svg += `<circle cx="${x2}" cy="${y}" r="4" fill="var(--f3)" data-t="${t}"></circle><circle cx="${x1}" cy="${y}" r="4" fill="var(--rust)" data-t="${t}"></circle>`;
+    });
+    svg += '</svg>';
+    const order = names.map(d => `<div style="font-size:11px;color:var(--mute);line-height:${rh}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d)}</div>`).join('');
+    return `<div class="card"><h3>${fn}</h3><small>${aatCat(fn)} table</small><div style="display:grid;grid-template-columns:120px 1fr;gap:8px;margin-top:6px"><div>${order}</div>${svg}</div></div>`;
+  }).join('');
+  function aatCat(fn){ return (fields.find(f => f.name===fn)||{}).aat || ''; }
+}
+
+document.addEventListener('mouseover', e => { const t = e.target.getAttribute && e.target.getAttribute('data-t'); if (t) showTip(e, t); });
+document.addEventListener('mouseout', e => { if (e.target.getAttribute && e.target.getAttribute('data-t')) hideTip(); });
+
+let timer = null;
+async function poll(now){
+  clearTimeout(timer);
+  try {
+    const s = await (await fetch('/api/state')).json();
+    lastState = s; renderDepts(s.known_departments); renderStatus(s);
+    const P = prepared(s); renderHeatmap(P); renderSmall(P); renderCompleteness(P); renderAAT(P);
+    timer = setTimeout(poll, s.running || s.indexing ? 2000 : 8000);
+  } catch (e) { $('#status').innerHTML = '<span class="live off"></span>server not reachable; is `python -m met_harvest serve` still running?'; timer = setTimeout(poll, 4000); }
+}
+poll(true);
+</script>
+</body>
+</html>

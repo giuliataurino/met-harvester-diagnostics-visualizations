@@ -63,12 +63,15 @@ class HarvestState:
 
 
 ProgressFn = Callable[[DeptProgress, int, int], None]   # (dept progress, done, total)
+RecordFn = Callable[[dict], None]                        # called with each newly fetched raw record
 
 
 class Harvester:
     def __init__(self, client: MetClient, workers: int = 4, checkpoint: int = 500,
-                 validate: bool = True, on_progress: Optional[ProgressFn] = None):
+                 validate: bool = True, on_progress: Optional[ProgressFn] = None,
+                 on_record: Optional[RecordFn] = None):
         self.client = client
+        self.on_record = on_record
         self.workers = max(1, workers)
         self.checkpoint = checkpoint
         self.validate = validate
@@ -131,7 +134,11 @@ class Harvester:
                 try:
                     MetObject.model_validate(raw)
                 except ValidationError as e:
+                    if self.on_record:
+                        self.on_record(raw)          # still in the cache, so still surveyed
                     return oid, "invalid", str(e)[:300]
+            if self.on_record:
+                self.on_record(raw)
             return oid, "fetched", ""
 
         with ThreadPoolExecutor(max_workers=self.workers) as pool:

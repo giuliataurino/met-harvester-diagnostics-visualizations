@@ -6,6 +6,7 @@
     python -m met_harvest survey    [--staging-sample 1000]
     python -m met_harvest map
     python -m met_harvest all       (harvest + survey + map)
+    python -m met_harvest serve     (http://localhost:8766: harvest + live views)
 """
 from __future__ import annotations
 
@@ -113,6 +114,12 @@ def cmd_map(a) -> int:
     return 0
 
 
+def cmd_serve(a) -> int:
+    from .serve import serve
+    serve(_client(a), port=a.port)
+    return 0
+
+
 def cmd_all(a) -> int:
     rc = cmd_harvest(a)
     if rc and not a.continue_on_failure:
@@ -164,6 +171,9 @@ def main(argv=None) -> int:
     survey_args(p); p.set_defaults(fn=cmd_survey)
     p = sub.add_parser("map", help="write field map + report from survey.json")
     p.set_defaults(fn=cmd_map)
+    p = sub.add_parser("serve", help="local page: harvest control + live fill-by-department views")
+    p.add_argument("--port", type=int, default=8766)
+    p.set_defaults(fn=cmd_serve)
     p = sub.add_parser("all", help="harvest, survey and map in one go")
     harvest_args(p); survey_args(p)
     p.add_argument("--continue-on-failure", action="store_true")

@@ -16,7 +16,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from . import aat as aat_mappings
 from .fields import DYNAMIC_KEY_PARENTS
+
+AAT_FIELDS = (("culture", "cultures"), ("objectName", "object_types"),
+              ("classification", "classifications"), ("medium", "materials"))
 
 EMPTY_STRING = "<empty string>"
 
@@ -69,6 +73,11 @@ class Survey:
         self.paths: dict[str, PathStats] = defaultdict(PathStats)
         self.by_dept_records: Counter = Counter()
         self.by_dept_filled: dict[str, Counter] = defaultdict(Counter)   # dept -> path -> filled
+        # dept -> path -> {filled, empty_string, null, empty_list} for top-level fields (small multiples)
+        self.by_dept_kind: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
+        # dept -> field -> {filled, resolved} for the AAT-mapped fields
+        self.by_dept_aat: dict[str, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
+        self._aat_cache: dict[tuple[str, str], bool] = {}
         self.listing_dept: dict[int, int] = {}       # objectID -> departmentId from ids/ manifests
         self.dept_names: dict[int, str] = {}
         self.dept_mismatch: Counter = Counter()      # (listing dept, record dept) -> n
@@ -106,6 +115,18 @@ class Survey:
         y = rec.get("objectBeginDate")
         if isinstance(y, int):
             self.objects_per_year[(y // 100) * 100] += 1
+        for fld, category in AAT_FIELDS:
+            v = rec.get(fld)
+            if isinstance(v, str) and v.strip():
+                term = v.split(",")[0].strip() if fld == "culture" else v.strip()
+                key = (category, term.lower())
+                hit = self._aat_cache.get(key)
+                if hit is None:
+                    hit = self._aat_cache[key] = bool(aat_mappings.get_aat_uri(term, category=category))
+                c = self.by_dept_aat[dept][fld]
+                c["filled"] += 1
+                if hit:
+                    c["resolved"] += 1
         self.image_stats["has_primary" if rec.get("primaryImage") else "no_primary"] += 1
         if rec.get("isPublicDomain"):
             self.image_stats["public_domain"] += 1
@@ -147,12 +168,17 @@ class Survey:
             return
         t = _type_name(v)
         st.types[t] += 1
+        top = "[]" not in path and "." not in path
         if v is None:
             st.nulls += 1
+            if top:
+                self.by_dept_kind[dept][path]["null"] += 1
             return
         if isinstance(v, str):
             if not v.strip():
                 st.empty_strings += 1
+                if top:
+                    self.by_dept_kind[dept][path]["empty_string"] += 1
                 return
             n = len(v)
             st.len_min = n if st.len_min is None else min(st.len_min, n)
@@ -161,6 +187,8 @@ class Survey:
         elif isinstance(v, list):
             if not v:
                 st.empty_lists += 1
+                if top:
+                    self.by_dept_kind[dept][path]["empty_list"] += 1
                 return
             st.list_len_max = max(st.list_len_max, len(v))
         elif isinstance(v, bool):
@@ -171,8 +199,9 @@ class Survey:
         elif isinstance(v, dict) and not v:
             return
         st.filled += 1
-        if "[]" not in path:                      # per-department fill for top-level fields only
+        if top:                                   # per-department fill for top-level fields only
             self.by_dept_filled[dept][path] += 1
+            self.by_dept_kind[dept][path]["filled"] += 1
         if isinstance(v, (str, int, float, bool)):
             self._count_value(st, v)
         if len(st.examples) < self.n_examples and not isinstance(v, (dict, list)):
@@ -199,7 +228,9 @@ class Survey:
         per_dept = {
             d: {"records": self.by_dept_records[d],
                 "fill": {p: round(self.by_dept_filled[d][p] / self.by_dept_records[d], 4)
-                         for p in top_paths}}
+                         for p in top_paths},
+                "kinds": {p: dict(self.by_dept_kind[d][p]) for p in top_paths},
+                "aat": {f: dict(c) for f, c in self.by_dept_aat[d].items()}}
             for d in depts
         }
         dup = {k: n for k, n in self.duplicate_accessions.items() if n > 1}
