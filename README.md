@@ -26,13 +26,22 @@ pip install -r requirements-dev.txt && pytest   # optional
 ## Usage
 
 ```
-python -m met_harvest check                                # 3 live calls to collectionapi.metmuseum.org, URLs printed
-python -m met_harvest departments                          # list department ids and names
-python -m met_harvest harvest --dept 13 --limit 200        # trial run
-python -m met_harvest harvest --workers 4 --rate 20        # everything (~480k objects)
-python -m met_harvest survey --staging-sample 2000         # read the cache, write survey.json
-python -m met_harvest map                                  # field_map.csv/json + REPORT.md
-python -m met_harvest all                                  # the three steps in one command
+cd ~
+rm -f ~/metdiag
+if [ ! -f ~/met-harvester-diagnostics/diagnostics/server.py ]; then
+  rm -rf ~/met-harvester-diagnostics
+  git clone https://github.com/giuliataurino/met_harvester_diagnostics.git ~/met-harvester-diagnostics \
+    || { echo "CLONE FAILED - read the git error above"; return 2>/dev/null || exit 1; }
+fi
+cd ~/met-harvester-diagnostics/diagnostics || { echo "diagnostics folder missing"; return 2>/dev/null || exit 1; }
+ls requirements.txt requirements-dev.txt server.py test_server.py \
+    || { echo "files missing in $(pwd)"; return 2>/dev/null || exit 1; }
+source ~/.venv/bin/activate
+pip install -r requirements.txt -r requirements-dev.txt
+[ -e metdiag ] || ln -s ../met_harvester metdiag
+python -m pytest test_server.py
+echo "Starting server: open http://localhost:8765"
+python server.py --cache data/met/objects
 ```
 
 Add `--verbose` before the subcommand to log every request URL and status. Every request goes
