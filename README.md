@@ -1,11 +1,11 @@
-# met_harvest — all-department Met harvester with metadata survey
+# Met Harvester Diagnostics
 
 Harvests every object in every curatorial department from The Met Collection Public API,
 then surveys the metadata (every JSON path actually served, its types, fill rates, values,
 and how these vary by department) and maps each path to the documented schema and to the
 `stg:` staging predicates used by `paa_graph_kb`.
 
-It generalises [met_harvester_diagnostics](https://github.com/giuliataurino/met_harvester_diagnostics)
+It generalises [met-harvester-diagnostics-department13](https://github.com/giuliataurino/met-harvester-diagnostics-department13)
 from Greek and Roman Art (department 13) to the whole collection, and keeps its
 `<objectID>.json` cache layout so the diagnostics UI can be pointed at the same cache
 (`python server.py --cache data/met/objects`).
