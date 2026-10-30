@@ -1,4 +1,4 @@
-# Met Harvester Diagnostics
+# Met Harvester Diagnostics — visualizations
 
 Harvests every object in every curatorial department from The Met Collection Public API
 (`https://collectionapi.metmuseum.org/public/collection/v1`), surveys the metadata (every
@@ -18,20 +18,46 @@ from Greek and Roman Art (department 13) to the whole collection and keeps the s
 
 ## Install
 
+Copy and paste each block into Terminal in order. Each block ends only when its last
+command has finished.
+
+**1. Clone**
+
 ```bash
 cd ~
-git clone https://github.com/giuliataurino/met-harvester-diagnostics.git
-cd ~/met-harvester-diagnostics
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt            # requests, pydantic, rdflib
-pip install -r requirements-dev.txt        # pytest (optional)
-python -m pytest tests                     # 8 tests, no network needed
+git clone https://github.com/giuliataurino/met-harvester-diagnostics-visualizations.git
+cd ~/met-harvester-diagnostics-visualizations
 ```
 
-Every command below is run from `~/met-harvester-diagnostics` with the venv active. If the
-prompt shows `~` instead of `met-harvester-diagnostics`, run
-`cd ~/met-harvester-diagnostics && source .venv/bin/activate` first.
+**2. One-time layout fix.** The package folder is committed as `met-harvester`, and Python
+cannot import a folder with a hyphen in its name; three copies of package files also sit at
+the repo root. This renames and removes them locally (safe to run again; it does nothing
+the second time):
+
+```bash
+[ -d met-harvester ] && mv met-harvester met_harvest
+rm -f cli.py client.py serve.py met_harvest/test.py tests/test.py
+[ -f gitignore ] && mv gitignore .gitignore
+ls met_harvest/cli.py && echo "layout ok"
+```
+
+**3. Virtual environment and dependencies**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest tests
+```
+
+Expect `8 passed`. Every command below is run from
+`~/met-harvester-diagnostics-visualizations` with the venv active. If the prompt shows `~`
+instead of the folder name, run this first:
+
+```bash
+cd ~/met-harvester-diagnostics-visualizations && source .venv/bin/activate
+```
 
 ## Run on localhost
 
@@ -108,11 +134,12 @@ https://metmuseum.github.io/#object). Anything the API serves that is not there 
 
 ## Using the department-13 UI on the same cache
 
-The older diagnostics UI can browse the records this tool harvests:
+The older diagnostics UI (the `met_harvester_diagnostics` repo, cloned here as
+`met-harvester-diagnostics-department13`) can browse the records this tool harvests:
 
 ```bash
 cd ~/met-harvester-diagnostics-department13/diagnostics
-python server.py --cache ~/met-harvester-diagnostics/data/met/objects
+python server.py --cache ~/met-harvester-diagnostics-visualizations/data/met/objects
 ```
 
 It runs on http://localhost:8765, so both pages can be open at once.
@@ -128,16 +155,26 @@ met_harvest/
   mapping.py    joins survey with fields.py; writes CSV / JSON / REPORT.md
   serve.py, index.html   local page: harvest control + live views
   cli.py        command line
+  __main__.py   makes `python -m met_harvest` work
   models.py, staging.py, aat.py   copied from the department-13 tool (originally paa_graph_kb)
 tests/          run the whole pipeline and the page's API against a fake Met API
 data/met/       cache and reports (ignored by git)
 ```
 
+To make the layout fix permanent in the repository (so step 2 is no longer needed), rename
+`met-harvester` to `met_harvest`, delete the root-level `cli.py`, `client.py`, `serve.py`,
+`fix_repo_layout.sh` and the empty `test.py` files, and rename `gitignore` to `.gitignore`.
+On GitHub's website this is done file by file with the pencil icon, editing the path at the
+top of the editor; from a terminal, run the commands in step 2 and then
+`git add -A && git commit -m "Fix package layout" && git push`.
+
 ## Troubleshooting
 
-- `No module named met_harvest` — you are not in `~/met-harvester-diagnostics`, or the
-  package folder is not named `met_harvest`. Python cannot import a folder with a hyphen in
-  its name.
+- `No module named met_harvest` — you are not in
+  `~/met-harvester-diagnostics-visualizations`, or step 2 of Install was skipped (the folder
+  is still named `met-harvester`).
+- `Could not open requirements file` — wrong folder; `pwd` should print
+  `/Users/<you>/met-harvester-diagnostics-visualizations`. Run the `cd` line above.
 - `No module named pytest` / `requests` — the venv is not active: `source .venv/bin/activate`.
 - `cannot reach https://collectionapi.metmuseum.org/...` from `check` — no network, or a
   proxy blocking the host. The page still opens and shows whatever is already in the cache.
